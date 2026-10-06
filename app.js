@@ -89,7 +89,7 @@ function create() {
 
     <div class="field">
       <label>APPLICATION À TESTER</label>
-      <input id="target" value="https://yuniko.app" placeholder="https://...">
+      <input id="target" value="https://yuniko-api.lafatriniainaallane.workers.dev" placeholder="https://...">
     </div>
 
     <div class="section-title">
