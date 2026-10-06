@@ -170,7 +170,7 @@ async function runYunikoTest(target: string, env: Env): Promise<RunResult> {
 
         const country = page.locator("select").first();
         if (await country.count()) {
-          await country.selectOption({ value: "Madagascar" });
+          await country.selectOption({ value: "BR" });
         } else {
           throw new Error("Le sélecteur de pays n'est pas détecté.");
         }
