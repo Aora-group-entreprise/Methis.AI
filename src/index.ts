@@ -170,7 +170,12 @@ async function runYunikoTest(target: string, env: Env): Promise<RunResult> {
 
         const country = page.locator("select").first();
         if (await country.count()) {
-          await country.selectOption({ label: "Brazil" });
+          const options = country.locator("option");
+          const optionCount = await options.count();
+          if (optionCount === 0) throw new Error("Le sélecteur de pays est vide.");
+
+          const index = optionCount > 1 ? 1 : 0;
+          await country.selectOption({ index });
         } else {
           throw new Error("Le sélecteur de pays n'est pas détecté.");
         }
