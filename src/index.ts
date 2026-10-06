@@ -4,6 +4,8 @@ interface Env {
   ASSETS: Fetcher;
   BROWSER: unknown;
   METHIS_ALLOWED_HOSTS?: string;
+  METHIS_TEST_USERNAME?: string;
+  METHIS_TEST_SECRET?: string;
 }
 
 type Step = {
@@ -108,107 +110,169 @@ async function runYunikoTest(target: string, env: Env): Promise<RunResult> {
       return (await page.title()) || "Page chargée";
     });
 
-    const registrationWorked = await step("Détection inscription", async () => {
-      const candidates = [
-        page.getByRole("link", { name: /créer un compte|inscription|sign up|register/i }).first(),
-        page.getByRole("button", { name: /créer un compte|inscription|sign up|register/i }).first(),
-      ];
+    let registrationWorked = true;
 
-      for (const candidate of candidates) {
-        if (await candidate.count()) {
-          await candidate.click();
-          await page.waitForTimeout(500);
-          return "Écran d'inscription trouvé";
-        }
-      }
-      throw new Error("Aucun bouton/lien d'inscription détecté.");
-    }, true);
+    if (env.METHIS_TEST_USERNAME?.trim() && env.METHIS_TEST_SECRET) {
+      const loginWorked = await step("Connexion du compte de test", async () => {
+        await page.goto(new URL("/login", target).toString(), {
+          waitUntil: "domcontentloaded",
+          timeout: 30_000,
+        });
 
-    if (registrationWorked) {
-      const stamp = Date.now().toString(36);
-      const username = `methis_${stamp}`;
-      const password = `Mth!_${stamp}_Y`;
-      account = { username };
-
-      await step("Inscription · étape 1", async () => {
         const inputs = page.locator("input");
-        const count = await inputs.count();
         const visible = [];
+        const count = await inputs.count();
         for (let i = 0; i < count; i++) {
           if (await inputs.nth(i).isVisible().catch(() => false)) visible.push(inputs.nth(i));
         }
-        if (visible.length < 3) throw new Error("Les champs username/password/confirmation ne sont pas tous visibles.");
+        if (visible.length < 2) throw new Error("Champs de connexion non détectés.");
 
-        await visible[0].fill(username);
-        await visible[1].fill(password);
-        await visible[2].fill(password);
+        await visible[0].fill(env.METHIS_TEST_USERNAME!.trim().toLowerCase());
+        await visible[1].fill(env.METHIS_TEST_SECRET!);
 
-        const button = page.getByRole("button", { name: /^continue$/i }).first();
-        if (!(await button.count())) throw new Error("Bouton Continue de l'étape 1 non détecté.");
-        await button.click();
-        await page.waitForTimeout(500);
-        return "Identifiant et mot de passe remplis.";
-      });
-
-      await step("Inscription · étape 2", async () => {
-        const inputs = page.locator("input");
-        const count = await inputs.count();
-        let displayNameInput = null;
-        let ageInput = null;
-
-        for (let i = 0; i < count; i++) {
-          const input = inputs.nth(i);
-          if (!(await input.isVisible().catch(() => false))) continue;
-          const type = (await input.getAttribute("type")) ?? "text";
-          const placeholder = ((await input.getAttribute("placeholder")) ?? "").toLowerCase();
-          if (type === "number" || /age/.test(placeholder)) ageInput = input;
-          else if (/display name|name/.test(placeholder)) displayNameInput = input;
-        }
-
-        if (!displayNameInput || !ageInput) throw new Error("Les champs nom et âge de l'étape 2 ne sont pas détectés.");
-        await displayNameInput.fill(`Methis Test ${stamp}`);
-
-        const country = page.locator("select").first();
-        if (await country.count()) {
-          const options = country.locator("option");
-          const optionCount = await options.count();
-          if (optionCount === 0) throw new Error("Le sélecteur de pays est vide.");
-
-          const index = optionCount > 1 ? 1 : 0;
-          await country.selectOption({ index });
-        } else {
-          throw new Error("Le sélecteur de pays n'est pas détecté.");
-        }
-
-        await ageInput.fill("17");
-
-        const button = page.getByRole("button", { name: /^continue$/i }).first();
-        if (!(await button.count())) throw new Error("Bouton Continue de l'étape 2 non détecté.");
-        await button.click();
-        await page.waitForTimeout(500);
-        return "Nom, pays et âge de test remplis.";
-      });
-
-      await step("Inscription · étape 3", async () => {
-        const skip = page.getByRole("button", { name: /skip for now/i }).first();
-        if (await skip.count()) {
-          await skip.click();
-          await page.waitForTimeout(1_000);
-          return "Photo ignorée, comme autorisé par Yuniko.";
-        }
-
-        const create = page.getByRole("button", { name: /create account/i }).first();
-        if (!(await create.count())) throw new Error("Bouton Create Account non détecté.");
-        await create.click();
+        const signIn = page.getByRole("button", { name: /^sign in$/i }).first();
+        if (!(await signIn.count())) throw new Error("Bouton Sign In non détecté.");
+        await signIn.click();
         await page.waitForTimeout(1_000);
-        return "Compte de test créé.";
-      });
 
-      await step("Vérification de session", async () => {
-        const response = await page.request.get(new URL("/api/auth/me", target).toString());
-        if (!response.ok()) throw new Error(`Session non authentifiée: HTTP ${response.status()}`);
-        return "Session Yuniko active après inscription.";
-      });
+        const cookies = await context.cookies();
+        const session = cookies.find((cookie) => cookie.name === "yuniko_session");
+        if (!session) throw new Error("Compte de test non connecté.");
+
+        const apiHost = session.domain.replace(/^\\./, "");
+        const response = await context.request.get(`https://${apiHost}/api/auth/me`);
+        if (!response.ok()) {
+          const body = (await response.text()).slice(0, 300);
+          throw new Error(`Session non authentifiée: HTTP ${response.status()} ${body}`);
+        }
+
+        return "Compte existant connecté et session vérifiée.";
+      }, true);
+
+      if (loginWorked) {
+        account = { username: env.METHIS_TEST_USERNAME.trim().toLowerCase() };
+        registrationWorked = false;
+      }
+    }
+
+    if (registrationWorked) {
+      const stamp = Date.now().toString(36);
+      const username = (env.METHIS_TEST_USERNAME?.trim() || `methis_${stamp}`).toLowerCase();
+      const password = env.METHIS_TEST_SECRET || `Mth!_${stamp}_Y`;
+      account = { username };
+
+      const registrationScreen = await step("Détection inscription", async () => {
+        if (!/\/login(?:[/?#]|$)/i.test(page.url())) {
+          await page.goto(new URL("/login", target).toString(), {
+            waitUntil: "domcontentloaded",
+            timeout: 30_000,
+          });
+        }
+
+        const candidates = [
+          page.getByRole("button", { name: /créer un compte|inscription|sign up|register/i }).first(),
+          page.getByRole("link", { name: /créer un compte|inscription|sign up|register/i }).first(),
+        ];
+
+        for (const candidate of candidates) {
+          if (await candidate.count()) {
+            await candidate.click();
+            await page.waitForTimeout(500);
+            return "Écran d'inscription trouvé";
+          }
+        }
+        throw new Error("Aucun bouton/lien d'inscription détecté.");
+      }, true);
+
+      if (registrationScreen) {
+        await step("Inscription · étape 1", async () => {
+          const inputs = page.locator("input");
+          const count = await inputs.count();
+          const visible = [];
+          for (let i = 0; i < count; i++) {
+            if (await inputs.nth(i).isVisible().catch(() => false)) visible.push(inputs.nth(i));
+          }
+          if (visible.length < 3) throw new Error("Les champs username/password/confirmation ne sont pas tous visibles.");
+
+          await visible[0].fill(username);
+          await visible[1].fill(password);
+          await visible[2].fill(password);
+
+          const button = page.getByRole("button", { name: /^continue$/i }).first();
+          if (!(await button.count())) throw new Error("Bouton Continue de l'étape 1 non détecté.");
+          await button.click();
+          await page.waitForTimeout(500);
+          return "Identifiant et mot de passe remplis.";
+        });
+
+        await step("Inscription · étape 2", async () => {
+          const inputs = page.locator("input");
+          const count = await inputs.count();
+          let displayNameInput = null;
+          let ageInput = null;
+
+          for (let i = 0; i < count; i++) {
+            const input = inputs.nth(i);
+            if (!(await input.isVisible().catch(() => false))) continue;
+            const type = (await input.getAttribute("type")) ?? "text";
+            const placeholder = ((await input.getAttribute("placeholder")) ?? "").toLowerCase();
+            if (type === "number" || /age/.test(placeholder)) ageInput = input;
+            else if (/display name|name/.test(placeholder)) displayNameInput = input;
+          }
+
+          if (!displayNameInput || !ageInput) throw new Error("Les champs nom et âge de l'étape 2 ne sont pas détectés.");
+          await displayNameInput.fill(`Methis Test ${stamp}`);
+
+          const country = page.locator("select").first();
+          if (await country.count()) {
+            const options = country.locator("option");
+            const optionCount = await options.count();
+            if (optionCount === 0) throw new Error("Le sélecteur de pays est vide.");
+
+            const index = optionCount > 1 ? 1 : 0;
+            await country.selectOption({ index });
+          } else {
+            throw new Error("Le sélecteur de pays n'est pas détecté.");
+          }
+
+          await ageInput.fill("17");
+
+          const button = page.getByRole("button", { name: /^continue$/i }).first();
+          if (!(await button.count())) throw new Error("Bouton Continue de l'étape 2 non détecté.");
+          await button.click();
+          await page.waitForTimeout(500);
+          return "Nom, pays et âge de test remplis.";
+        });
+
+        await step("Inscription · étape 3", async () => {
+          const skip = page.getByRole("button", { name: /skip for now/i }).first();
+          if (await skip.count()) {
+            await skip.click();
+            await page.waitForTimeout(1_000);
+            return "Photo ignorée, comme autorisé par Yuniko.";
+          }
+
+          const create = page.getByRole("button", { name: /create account/i }).first();
+          if (!(await create.count())) throw new Error("Bouton Create Account non détecté.");
+          await create.click();
+          await page.waitForTimeout(1_000);
+          return "Compte de test créé.";
+        });
+
+        await step("Vérification de session", async () => {
+          const cookies = await context.cookies();
+          const session = cookies.find((cookie) => cookie.name === "yuniko_session");
+          if (!session) throw new Error("Cookie yuniko_session absent après inscription.");
+
+          const apiHost = session.domain.replace(/^\\./, "");
+          const response = await context.request.get(`https://${apiHost}/api/auth/me`);
+          if (!response.ok()) {
+            const body = (await response.text()).slice(0, 300);
+            throw new Error(`Session non authentifiée: HTTP ${response.status()} ${body}`);
+          }
+          return `Session Yuniko active via ${apiHost}.`;
+        });
+      }
     }
 
     await step("Navigation principale", async () => {
