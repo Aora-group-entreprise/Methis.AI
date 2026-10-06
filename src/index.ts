@@ -21,7 +21,6 @@ type RunResult = {
   status: "passed" | "failed" | "blocked";
   account?: {
     username: string;
-    email: string;
   };
   steps: Step[];
   consoleErrors: string[];
@@ -118,7 +117,7 @@ async function runYunikoTest(target: string, env: Env): Promise<RunResult> {
       for (const candidate of candidates) {
         if (await candidate.count()) {
           await candidate.click();
-          await page.waitForTimeout(700);
+          await page.waitForTimeout(500);
           return "Écran d'inscription trouvé";
         }
       }
@@ -128,38 +127,83 @@ async function runYunikoTest(target: string, env: Env): Promise<RunResult> {
     if (registrationWorked) {
       const stamp = Date.now().toString(36);
       const username = `methis_${stamp}`;
-      const email = `${username}@example.invalid`;
+      const password = `Mth!_${stamp}_Y`;
+      account = { username };
 
-      const fields = page.locator("input");
-      const count = await fields.count();
-
-      for (let i = 0; i < count; i++) {
-        const input = fields.nth(i);
-        const type = (await input.getAttribute("type")) ?? "text";
-        const name = ((await input.getAttribute("name")) ?? "").toLowerCase();
-        const placeholder = ((await input.getAttribute("placeholder")) ?? "").toLowerCase();
-        const hint = name + " " + placeholder;
-
-        if (type === "email" || /email|mail/.test(hint)) {
-          await input.fill(email);
-        } else if (/password|mot de passe/.test(hint)) {
-          await input.fill(`Mth!_${stamp}_Y`);
-        } else if (/pseudo|username|nom d'utilisateur|nickname/.test(hint)) {
-          await input.fill(username);
+      await step("Inscription · étape 1", async () => {
+        const inputs = page.locator("input");
+        const count = await inputs.count();
+        const visible = [];
+        for (let i = 0; i < count; i++) {
+          if (await inputs.nth(i).isVisible().catch(() => false)) visible.push(inputs.nth(i));
         }
-      }
+        if (visible.length < 3) throw new Error("Les champs username/password/confirmation ne sont pas tous visibles.");
 
-      account = { username, email };
+        await visible[0].fill(username);
+        await visible[1].fill(password);
+        await visible[2].fill(password);
 
-      await step("Préparation du compte de test", async () => {
-        const buttons = page.getByRole("button", { name: /créer|s'inscrire|inscription|sign up|register|continuer/i });
-        if (await buttons.count()) {
-          await buttons.first().click();
+        const button = page.getByRole("button", { name: /^continue$/i }).first();
+        if (!(await button.count())) throw new Error("Bouton Continue de l'étape 1 non détecté.");
+        await button.click();
+        await page.waitForTimeout(500);
+        return "Identifiant et mot de passe remplis.";
+      });
+
+      await step("Inscription · étape 2", async () => {
+        const inputs = page.locator("input");
+        const count = await inputs.count();
+        let displayNameInput = null;
+        let ageInput = null;
+
+        for (let i = 0; i < count; i++) {
+          const input = inputs.nth(i);
+          if (!(await input.isVisible().catch(() => false))) continue;
+          const type = (await input.getAttribute("type")) ?? "text";
+          const placeholder = ((await input.getAttribute("placeholder")) ?? "").toLowerCase();
+          if (type === "number" || /age/.test(placeholder)) ageInput = input;
+          else if (/display name|name/.test(placeholder)) displayNameInput = input;
+        }
+
+        if (!displayNameInput || !ageInput) throw new Error("Les champs nom et âge de l'étape 2 ne sont pas détectés.");
+        await displayNameInput.fill(`Methis Test ${stamp}`);
+
+        const country = page.locator("select").filter({ visible: true }).first();
+        if (await country.count()) {
+          await country.selectOption({ label: "Madagascar" });
+        } else {
+          throw new Error("Le sélecteur de pays n'est pas détecté.");
+        }
+
+        await ageInput.fill("17");
+
+        const button = page.getByRole("button", { name: /^continue$/i }).first();
+        if (!(await button.count())) throw new Error("Bouton Continue de l'étape 2 non détecté.");
+        await button.click();
+        await page.waitForTimeout(500);
+        return "Nom, pays et âge de test remplis.";
+      });
+
+      await step("Inscription · étape 3", async () => {
+        const skip = page.getByRole("button", { name: /skip for now/i }).first();
+        if (await skip.count()) {
+          await skip.click();
           await page.waitForTimeout(1_000);
-          return "Formulaire rempli avec un compte isolé.";
+          return "Photo ignorée, comme autorisé par Yuniko.";
         }
-        throw new Error("Bouton de validation du formulaire non détecté.");
-      }, true);
+
+        const create = page.getByRole("button", { name: /create account/i }).first();
+        if (!(await create.count())) throw new Error("Bouton Create Account non détecté.");
+        await create.click();
+        await page.waitForTimeout(1_000);
+        return "Compte de test créé.";
+      });
+
+      await step("Vérification de session", async () => {
+        const response = await page.request.get(new URL("/api/auth/me", target).toString());
+        if (!response.ok()) throw new Error(`Session non authentifiée: HTTP ${response.status()}`);
+        return "Session Yuniko active après inscription.";
+      });
     }
 
     await step("Navigation principale", async () => {
