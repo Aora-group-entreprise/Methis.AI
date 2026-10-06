@@ -168,7 +168,7 @@ async function runYunikoTest(target: string, env: Env): Promise<RunResult> {
         if (!displayNameInput || !ageInput) throw new Error("Les champs nom et âge de l'étape 2 ne sont pas détectés.");
         await displayNameInput.fill(`Methis Test ${stamp}`);
 
-        const country = page.locator("select").filter({ visible: true }).first();
+        const country = page.locator("select").first();
         if (await country.count()) {
           await country.selectOption({ label: "Madagascar" });
         } else {
