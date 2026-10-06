@@ -139,8 +139,8 @@ async function runYunikoTest(target: string, env: Env): Promise<RunResult> {
         const session = cookies.find((cookie) => cookie.name === "yuniko_session");
         if (!session) throw new Error("Compte de test non connecté.");
 
-        const apiHost = session.domain.replace(/^\\./, "");
-        const response = await context.request.get(`https://${apiHost}/api/auth/me`);
+        const apiHost = session.domain.replace(/^\./, "");
+        const response = await context.request.get(`https://${apiHost}/api/auth/me`, { headers: { Cookie: `yuniko_session=${session.value}` } });
         if (!response.ok()) {
           const body = (await response.text()).slice(0, 300);
           throw new Error(`Session non authentifiée: HTTP ${response.status()} ${body}`);
@@ -264,8 +264,8 @@ async function runYunikoTest(target: string, env: Env): Promise<RunResult> {
           const session = cookies.find((cookie) => cookie.name === "yuniko_session");
           if (!session) throw new Error("Cookie yuniko_session absent après inscription.");
 
-          const apiHost = session.domain.replace(/^\\./, "");
-          const response = await context.request.get(`https://${apiHost}/api/auth/me`);
+          const apiHost = session.domain.replace(/^\./, "");
+          const response = await context.request.get(`https://${apiHost}/api/auth/me`, { headers: { Cookie: `yuniko_session=${session.value}` } });
           if (!response.ok()) {
             const body = (await response.text()).slice(0, 300);
             throw new Error(`Session non authentifiée: HTTP ${response.status()} ${body}`);
