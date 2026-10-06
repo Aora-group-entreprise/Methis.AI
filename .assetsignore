@@ -1,0 +1,14 @@
+.git/
+.github/
+.wrangler/
+.gitignore
+.assetsignore
+wrangler.json
+wrangler.jsonc
+wrangler.toml
+README.md
+package.json
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+bun.lockb
