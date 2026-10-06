@@ -116,11 +116,97 @@ function running() {
 
   if (!result) {
     return shell(`
+      <style>
+        @keyframes methisOrbit {
+          0% { transform: rotate(0deg) scale(1); }
+          50% { transform: rotate(180deg) scale(1.06); }
+          100% { transform: rotate(360deg) scale(1); }
+        }
+        @keyframes methisPulse {
+          0%, 100% { opacity: .45; transform: scale(.92); }
+          50% { opacity: 1; transform: scale(1.08); }
+        }
+        @keyframes methisScan {
+          0% { transform: translateX(-115%); }
+          100% { transform: translateX(115%); }
+        }
+        .methis-working {
+          min-height: 430px;
+          display:flex;
+          flex-direction:column;
+          align-items:center;
+          justify-content:center;
+          text-align:center;
+          overflow:hidden;
+        }
+        .methis-logo-stage {
+          position:relative;
+          width:112px;
+          height:112px;
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          margin-bottom:26px;
+        }
+        .methis-logo-glow {
+          position:absolute;
+          inset:0;
+          border-radius:50%;
+          background:radial-gradient(circle, rgba(199,60,255,.48), transparent 68%);
+          animation:methisPulse 1.7s ease-in-out infinite;
+        }
+        .methis-logo-ring {
+          position:absolute;
+          inset:7px;
+          border:2px solid rgba(112,91,255,.8);
+          border-top-color:#ff3cae;
+          border-right-color:#c73cff;
+          border-radius:50%;
+          animation:methisOrbit 1.35s linear infinite;
+        }
+        .methis-logo {
+          position:relative;
+          width:66px;
+          height:66px;
+          object-fit:contain;
+          border-radius:18px;
+          animation:methisPulse 1.35s ease-in-out infinite;
+          box-shadow:0 0 35px rgba(199,60,255,.5);
+        }
+        .methis-scan {
+          width:190px;
+          height:3px;
+          border-radius:999px;
+          overflow:hidden;
+          background:rgba(255,255,255,.08);
+          margin-top:20px;
+        }
+        .methis-scan::after {
+          content:"";
+          display:block;
+          width:55%;
+          height:100%;
+          background:linear-gradient(90deg, transparent, #c73cff, #ff3cae, transparent);
+          animation:methisScan 1.1s ease-in-out infinite;
+        }
+      </style>
       <div class="screen-title">
         <button class="back" onclick="go('tests')">‹</button>
         <h1>Résultat</h1>
       </div>
-      <div class="card"><div class="empty">Methis travaille…</div></div>
+      <div class="card methis-working">
+        <div class="methis-logo-stage">
+          <div class="methis-logo-glow"></div>
+          <div class="methis-logo-ring"></div>
+          <img class="methis-logo" src="${logo}" alt="Methis.AI">
+        </div>
+        <b style="font-size:18px">Methis travaille…</b>
+        <small style="color:var(--muted);max-width:260px;margin-top:8px">
+          Navigateur réel en cours d'exécution sur Yuniko
+        </small>
+        <div class="methis-scan"></div>
+        <small style="color:#aeb9df;margin-top:12px">Analyse des étapes et vérification des résultats</small>
+      </div>
     `);
   }
 
