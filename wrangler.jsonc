@@ -13,6 +13,6 @@
     "binding": "BROWSER"
   },
   "vars": {
-    "METHIS_ALLOWED_HOSTS": "yuniko.app"
+    "METHIS_ALLOWED_HOSTS": "yuniko-api.lafatriniainaallane.workers.dev"
   }
 }
